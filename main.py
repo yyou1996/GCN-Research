@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 
 import net as net
-from gcn_tf.gcn.utils import load_data
+from utils import load_data
 from sklearn.metrics import f1_score
 
 
