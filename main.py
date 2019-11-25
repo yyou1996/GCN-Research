@@ -27,7 +27,7 @@ def run():
         optimizer.zero_grad()
         output = net_gcn(features, adj)
         loss_train = loss_func(output[idx_train], labels[idx_train])
-        print(epoch, loss_train.data)
+        print('epoch', epoch, 'loss', loss_train.data)
         loss_train.backward()
         optimizer.step()
 
