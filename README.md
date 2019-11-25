@@ -1,3 +1,3 @@
 # GCN_Baseline
 
-python -m main
+python main.py
