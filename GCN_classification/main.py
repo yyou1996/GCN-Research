@@ -14,15 +14,18 @@ import net
 
 
 parser = argparse.ArgumentParser(description='PyTorch Cifar10 Training')
-parser.add_argument('--data', type=str, default='../data', help='location of the data corpus')
+parser.add_argument('--data', type=str, default='../../data', help='location of the data corpus')
 parser.add_argument('--batch_size', type=int, default=256, help='batch size')
 parser.add_argument('--lr', default=0.005, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=3e-4, type=float, help='weight decay')
 parser.add_argument('--epochs', default=100, type=int, help='number of total epochs to run')
 parser.add_argument('--print_freq', default=50, type=int, help='print frequency')
+
+
 parser.add_argument('--save_dir', help='The directory used to save the trained models', default='model', type=str)
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
+parser.add_argument('--threshold', type=float, default=1, help='gpu device id')
 
 
 best_prec1 = 0
@@ -30,13 +33,15 @@ best_prec1 = 0
 def main():
     global args, best_prec1
     args = parser.parse_args()
+    print(args)
 
     if not torch.cuda.is_available():
         logging.info('no gpu device available')
         sys.exit(1)
     torch.cuda.set_device(int(args.gpu))
 
-    model = net.VGG16()
+    # model = net.VGG16()
+    model = net.VGG16_GCN(args.threshold)
     model.cuda()
 
     cudnn.benchmark = True
@@ -73,14 +78,18 @@ def main():
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
+    all_distance=[]
+
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
     
     for epoch in range(args.epochs):
         print("The learning rate is {}".format(optimizer.param_groups[0]['lr']))
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
-
+        dis1=train(train_loader, model, criterion, optimizer, epoch)
+        all_distance.append(dis1)
         # evaluate on validation set
-        validate(val_loader, model, criterion)
+        prec1 = validate(val_loader, model, criterion)
 
         scheduler.step()
 
@@ -103,6 +112,9 @@ def main():
             'optimizer': optimizer,
         }, filename=os.path.join(args.save_dir, 'checkpoint.pt'))
 
+    all_distance = np.array(all_distance).reshape(-1)
+    np.savetxt('distance.txt', all_distance)
+
 
 def train(train_loader, model, criterion, optimizer, epoch):
     
@@ -111,6 +123,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     # switch to train mode
     model.train()
+    distance = []
 
     for i, (input, target) in enumerate(train_loader):
 
@@ -118,7 +131,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
         target = target.cuda()
 
         optimizer.zero_grad()
-        output = model(input)
+        output, dis = model(input)
+
+        distance.append(dis.cpu().item())
 
 
         loss = criterion(output, target)
@@ -139,6 +154,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       epoch, i, len(train_loader), loss=losses, top1=top1))
 
     print('train_accuracy {top1.avg:.3f}'.format(top1=top1))
+    return distance
 
 def validate(val_loader, model, criterion):
 
@@ -154,7 +170,7 @@ def validate(val_loader, model, criterion):
 
         # compute output
         with torch.no_grad():
-            output = model(input)
+            output, _ = model(input)
             loss = criterion(output, target)
 
         output = output.float()

@@ -22,30 +22,30 @@ class VGG_GCN_cifar10(nn.Module):
     def graph(self, feature):
         feature_trans = torch.transpose(feature, 0, 1)
         feature_norm = torch.norm(feature, p=2, dim=1)
-        feature_norm = feature_norm.repeat(feature.size(0),1)
+        feature_norm = feature_norm.repeat(feature.size(0),1).pow(2)
         distance = feature_norm + torch.transpose(feature_norm, 0, 1) - 2*torch.mm(feature, feature_trans)
         onetensor = torch.ones_like(distance)
         zerotensor = torch.zeros_like(distance)
-        adj = torch.where(distance<=self.threshold, onetensor, zerotensor)
-        A_hat = adj + torch.eye(feature.size(0))
-        D_hat_sqrt_inverse = torch.diag(1/torch.sqrt(torch.sum(A_hat,dim=1)))
-        matrix = torch.mm(D_hat_sqrt_inverse, A_hat)
-        matrix = torch.mm(matrix, D_hat_sqrt_inverse)
-        return matrix 
+        adj = torch.where(distance<=self.threshold, onetensor, zerotensor)  
+        A_hat = adj + torch.eye(feature.size(0)).cuda()
+        D_hat_inverse = torch.diag(1/torch.sum(A_hat,dim=1))
+
+        matrix = torch.mm(A_hat, D_hat_inverse)
+        return matrix, torch.mean(distance)
 
 
     def forward(self, x):
         out = self.features(x)
         out = out.view(out.size(0), -1)
 
-        mat = self.graph(out)
+        mat, dis = self.graph(out)
         out = torch.mm(mat, out)
         out = self.linear(out)
         out = self.relu(out)
         out = self.dropout(out)
 
         out = self.classifier(out)
-        return out 
+        return out, dis
 
 class VGG_cifar10(nn.Module):
 
