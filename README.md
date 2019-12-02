@@ -1,3 +1,1 @@
-# GCN_Baseline
-
-python main.py
+# GCN Research
