@@ -14,10 +14,6 @@ class VGG_GCN_cifar10(nn.Module):
         self.threshold = threshold
         self.features = origin_model.features
         self.classifier = nn.Linear(512, 10)
-        self.linear = nn.Linear(512,512)
-        self.relu = nn.ReLU(inplace=True)
-        self.dropout = nn.Dropout(p=0.5)
-
 
     def graph(self, feature):
         feature_trans = torch.transpose(feature, 0, 1)
@@ -29,23 +25,16 @@ class VGG_GCN_cifar10(nn.Module):
         adj = torch.where(distance<=self.threshold, onetensor, zerotensor)  
         A_hat = adj + torch.eye(feature.size(0)).cuda()
         D_hat_inverse = torch.diag(1/torch.sum(A_hat,dim=1))
-
         matrix = torch.mm(A_hat, D_hat_inverse)
-        return matrix, torch.mean(distance)
-
+        return matrix
 
     def forward(self, x):
         out = self.features(x)
         out = out.view(out.size(0), -1)
-
-        mat, dis = self.graph(out)
+        mat = self.graph(out)
         out = torch.mm(mat, out)
-        out = self.linear(out)
-        out = self.relu(out)
-        out = self.dropout(out)
-
         out = self.classifier(out)
-        return out, dis
+        return out
 
 class VGG_cifar10(nn.Module):
 
@@ -54,33 +43,29 @@ class VGG_cifar10(nn.Module):
         self.features = origin_model.features
         self.classifier = nn.Linear(512, 10)
 
+    def graph(self, feature):
+        feature_trans = torch.transpose(feature, 0, 1)
+        feature_norm = torch.norm(feature, p=2, dim=1)
+        feature_norm = feature_norm.repeat(feature.size(0),1).pow(2)
+        distance = feature_norm + torch.transpose(feature_norm, 0, 1) - 2*torch.mm(feature, feature_trans)
+        return torch.mean(distance)
+
     def forward(self, x):
         out = self.features(x)
         out = out.view(out.size(0), -1)
+        dis = self.graph(out)
         out = self.classifier(out)
-        return out 
+        return out, dis
 
 def VGG16():
-    origin_model = models.vgg16(pretrained=False)
+    origin_model = models.vgg16_bn(pretrained=False)
     return VGG_cifar10(origin_model, labels=10)
 
 def VGG16_GCN(threshold):
-    origin_model = models.vgg16(pretrained=False)
+    origin_model = models.vgg16_bn(pretrained=False)
     return VGG_GCN_cifar10(origin_model, threshold, labels=10)
 
 
 if __name__ == '__main__':
-    feature = torch.randn(5,20)
-    feature_trans = torch.transpose(feature, 0, 1)
-    feature_norm = torch.norm(feature, p=2, dim=1)
-    feature_norm = feature_norm.repeat(feature.size(0),1)
-    distance = feature_norm + torch.transpose(feature_norm, 0, 1) - 2*torch.mm(feature, feature_trans)
-    onetensor = torch.ones_like(distance)
-    zerotensor = torch.zeros_like(distance)
-    adj = torch.where(distance<=0.1, onetensor, zerotensor)
-    A_hat = adj + torch.eye(feature.size(0))
-    D_hat_sqrt_inverse = torch.diag(1/torch.sqrt(torch.sum(A_hat,dim=1)))
-    print(D_hat_sqrt_inverse)
-    matrix = torch.mm(D_hat_sqrt_inverse, A_hat)
-    matrix = torch.mm(matrix, D_hat_sqrt_inverse)
-    print(matrix)
+    origin_model = models.vgg16_bn(pretrained=False)
+    print(origin_model)

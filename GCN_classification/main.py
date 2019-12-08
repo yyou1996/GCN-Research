@@ -1,6 +1,7 @@
 import argparse
 import os
 import torch
+import numpy as np 
 import torch.optim
 import torch.nn as nn
 import torch.utils.data
@@ -14,7 +15,7 @@ import net
 
 
 parser = argparse.ArgumentParser(description='PyTorch Cifar10 Training')
-parser.add_argument('--data', type=str, default='../../data', help='location of the data corpus')
+parser.add_argument('--data', type=str, default='../data', help='location of the data corpus')
 parser.add_argument('--batch_size', type=int, default=256, help='batch size')
 parser.add_argument('--lr', default=0.005, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
@@ -25,7 +26,7 @@ parser.add_argument('--print_freq', default=50, type=int, help='print frequency'
 
 parser.add_argument('--save_dir', help='The directory used to save the trained models', default='model', type=str)
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
-parser.add_argument('--threshold', type=float, default=1, help='gpu device id')
+parser.add_argument('--threshold', type=float, default=500, help='gpu device id')
 
 
 best_prec1 = 0
@@ -78,42 +79,36 @@ def main():
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
-    all_distance=[]
-
-    if not os.path.exists(args.save_dir):
-        os.mkdir(args.save_dir)
+    # if not os.path.exists(args.save_dir):
+    #     os.mkdir(args.save_dir)
     
     for epoch in range(args.epochs):
         print("The learning rate is {}".format(optimizer.param_groups[0]['lr']))
         # train for one epoch
-        dis1=train(train_loader, model, criterion, optimizer, epoch)
-        all_distance.append(dis1)
+        train(train_loader, model, criterion, optimizer, epoch)
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion)
 
         scheduler.step()
 
-        # remember best prec@1 and save checkpoint
-        is_best = prec1 > best_prec1
-        best_prec1 = max(prec1, best_prec1)
+        # # remember best prec@1 and save checkpoint
+        # is_best = prec1 > best_prec1
+        # best_prec1 = max(prec1, best_prec1)
 
-        if is_best:
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'best_prec1': best_prec1,
-                'optimizer': optimizer,
-            }, filename=os.path.join(args.save_dir, 'best_model.pt'))
+        # if is_best:
+        #     save_checkpoint({
+        #         'epoch': epoch + 1,
+        #         'state_dict': model.state_dict(),
+        #         'best_prec1': best_prec1,
+        #         'optimizer': optimizer,
+        #     }, filename=os.path.join(args.save_dir, 'best_model.pt'))
 
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': model.state_dict(),
-            'best_prec1': best_prec1,
-            'optimizer': optimizer,
-        }, filename=os.path.join(args.save_dir, 'checkpoint.pt'))
-
-    all_distance = np.array(all_distance).reshape(-1)
-    np.savetxt('distance.txt', all_distance)
+        # save_checkpoint({
+        #     'epoch': epoch + 1,
+        #     'state_dict': model.state_dict(),
+        #     'best_prec1': best_prec1,
+        #     'optimizer': optimizer,
+        # }, filename=os.path.join(args.save_dir, 'checkpoint.pt'))
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -125,16 +120,19 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
     distance = []
 
+    if epoch > 15:
+        model.threshold = args.threshold
+    else:
+        model.threshold = 0
+
+
     for i, (input, target) in enumerate(train_loader):
 
         input = input.cuda()
         target = target.cuda()
 
         optimizer.zero_grad()
-        output, dis = model(input)
-
-        distance.append(dis.cpu().item())
-
+        output = model(input)
 
         loss = criterion(output, target)
         loss.backward()
@@ -154,7 +152,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       epoch, i, len(train_loader), loss=losses, top1=top1))
 
     print('train_accuracy {top1.avg:.3f}'.format(top1=top1))
-    return distance
 
 def validate(val_loader, model, criterion):
 
@@ -170,7 +167,7 @@ def validate(val_loader, model, criterion):
 
         # compute output
         with torch.no_grad():
-            output, _ = model(input)
+            output = model(input)
             loss = criterion(output, target)
 
         output = output.float()
@@ -228,7 +225,6 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
-
 
 if __name__ == '__main__':
     main()
