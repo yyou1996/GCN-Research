@@ -26,7 +26,6 @@ parser.add_argument('--print_freq', default=50, type=int, help='print frequency'
 
 parser.add_argument('--save_dir', help='The directory used to save the trained models', default='/data4/zzy/model/vgg_thres=300', type=str)
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
-parser.add_argument('--threshold', type=float, default=300, help='gpu device id')
 
 
 best_prec1 = 0
@@ -41,7 +40,7 @@ def main():
         sys.exit(1)
     torch.cuda.set_device(int(args.gpu))
 
-    model = net.VGG16_GCN(args.threshold)
+    model = net.VGG16_GCN_GT()
     
     model.cuda()
 
@@ -120,19 +119,13 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
     distance = []
 
-    if epoch > 15:
-        model.threshold = args.threshold
-    else:
-        model.threshold = 0.1
-
-
     for i, (input, target) in enumerate(train_loader):
 
         input = input.cuda()
         target = target.cuda()
 
         optimizer.zero_grad()
-        output = model(input)
+        output = model([input,target])
 
         loss = criterion(output, target)
         loss.backward()
@@ -167,7 +160,7 @@ def validate(val_loader, model, criterion):
 
         # compute output
         with torch.no_grad():
-            output = model(input)
+            output = model([input,target])
             loss = criterion(output, target)
 
         output = output.float()
