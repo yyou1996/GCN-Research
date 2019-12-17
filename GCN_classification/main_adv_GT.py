@@ -12,15 +12,16 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 
 import net 
+from attack_algo import PGD
 
 
 parser = argparse.ArgumentParser(description='PyTorch Cifar10 Training')
 parser.add_argument('--data', type=str, default='/data4/zzy/data/', help='location of the data corpus')
-parser.add_argument('--batch_size', type=int, default=256, help='batch size')
-parser.add_argument('--lr', default=0.001, type=float, help='initial learning rate')
+parser.add_argument('--batch_size', type=int, default=128, help='batch size')
+parser.add_argument('--lr', default=0.005, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=3e-4, type=float, help='weight decay')
-parser.add_argument('--epochs', default=300, type=int, help='number of total epochs to run')
+parser.add_argument('--epochs', default=100, type=int, help='number of total epochs to run')
 parser.add_argument('--print_freq', default=50, type=int, help='print frequency')
 
 
@@ -39,8 +40,6 @@ def main():
         logging.info('no gpu device available')
         sys.exit(1)
     torch.cuda.set_device(int(args.gpu))
-
-    setup_seed(20)
 
     model = net.VGG16_GCN_GT()
     
@@ -90,6 +89,8 @@ def main():
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion)
 
+        ata = validate_adv(val_loader, model, criterion)
+
         scheduler.step()
 
         # # remember best prec@1 and save checkpoint
@@ -127,6 +128,16 @@ def train(train_loader, model, criterion, optimizer, epoch):
         target = target.cuda()
 
         optimizer.zero_grad()
+
+        # input_adv = PGD(input, criterion,
+        #     y = target,
+        #     eps = 8/255,
+        #     model = model,
+        #     steps = 10,
+        #     gamma = 2/255,
+        #     randinit = True).data
+
+        # input_adv = input_adv.cuda()
         output = model([input,target])
 
         loss = criterion(output, target)
@@ -147,6 +158,53 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       epoch, i, len(train_loader), loss=losses, top1=top1))
 
     print('train_accuracy {top1.avg:.3f}'.format(top1=top1))
+
+def validate_adv(val_loader, model, criterion):
+
+    losses = AverageMeter()
+    top1 = AverageMeter()
+
+    # switch to evaluate mode
+    model.eval()
+
+    for i, (input, target) in enumerate(val_loader):
+
+        input = input.cuda()
+        target = target.cuda()
+
+        input_adv = PGD(input, criterion,
+            y = target,
+            eps = 8/255,
+            model = model,
+            steps = 20,
+            gamma = 2/255,
+            randinit = True).data
+
+        input_adv = input_adv.cuda()
+
+
+        # compute output
+        with torch.no_grad():
+            output = model([input_adv,target])
+            loss = criterion(output, target)
+
+        output = output.float()
+        loss = loss.float()
+
+        # measure accuracy and record loss
+        prec1 = accuracy(output.data, target)[0]
+        losses.update(loss.item(), input.size(0))
+        top1.update(prec1.item(), input.size(0))
+
+        if i % args.print_freq == 0:
+            print('Test: [{0}/{1}]\t'
+                  'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                  'Accuracy {top1.val:.3f} ({top1.avg:.3f})'.format(
+                      i, len(val_loader), loss=losses, top1=top1))
+
+    print('valid_accuracy {top1.avg:.3f}'.format(top1=top1))
+
+    return top1.avg
 
 def validate(val_loader, model, criterion):
 
@@ -220,13 +278,6 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].view(-1).float().sum(0)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
-
-def setup_seed(seed): 
-    torch.manual_seed(seed) 
-    torch.cuda.manual_seed_all(seed) 
-    np.random.seed(seed) 
-    random.seed(seed) 
-    torch.backends.cudnn.deterministic = True 
 
 if __name__ == '__main__':
     main()

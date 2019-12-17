@@ -8,20 +8,55 @@ import torch.nn.functional as F
 import torchvision.models as models
 
 
-class VGG_GCN_GT(nn.Module):
+class VGG_GCN_graph(nn.Module):
 
-    def __init__(self, origin_model, labels=10):
-        super(VGG_GCN_GT, self).__init__()
+    def __init__(self, origin_model, threshold=0.5, labels=10):
+        super(VGG_GCN_graph, self).__init__()
         self.features = origin_model.features
         self.classifier = nn.Linear(512, 10)
+        self.linear = nn.Sequential(
+                nn.Linear(512,256),
+                nn.ReLU(),
+                nn.Linear(256,128)
+        )
+        self.threshold = threshold
 
     def adj_matrix(self, target):
+
         batch_size = target.size(0)
         target_matrix = target.repeat(batch_size,1)
         adj = (target_matrix == torch.transpose(target_matrix,0,1))
-        adj = adj.float() + torch.eye(batch_size).cuda()
-        adj = adj.detach()
-        return adj 
+        adj = adj.float()
+        
+        return adj  
+
+    def graph(self, feature):
+
+        feature_trans = torch.transpose(feature, 0, 1)
+        inner_product = torch.mm(feature, feature_trans)
+        distance = torch.sigmoid(inner_product)
+
+        return distance
+
+    def gcn(self, distance):
+
+        batch_size = distance.size(0)
+        zerotensor = torch.zeros_like(distance)
+        onetensor = torch.zeros_like(distance)
+        adj = torch.where(distance > self.threshold, distance, zerotensor) 
+        mask = torch.where(distance > self.threshold, onetensor, zerotensor)  
+
+        top10_adj = torch.zeros_like(adj)
+        idx = torch.topk(adj, 10)[1]
+        for ii in range(batch_size):
+            top10_adj[ii,idx[ii]] = 1
+        
+        top10_adj = top10_adj*mask
+
+        A_hat = top10_adj + torch.eye(batch_size).cuda()
+        D_hat_inverse = torch.diag(1/torch.sum(A_hat,dim=1))
+        matrix = torch.mm(A_hat, D_hat_inverse)
+        return matrix.detach()
 
     def forward(self, input_list):
         x = input_list[0]
@@ -29,12 +64,17 @@ class VGG_GCN_GT(nn.Module):
 
         out = self.features(x)
         out = out.view(out.size(0), -1)
-        mat = self.adj_matrix(target)
+
+        # graph
+        low_feature = self.linear(out)
+        graph_pre = self.graph(low_feature)
+        graph_gt = self.adj_matrix(target)
+
+        mat = self.gcn(graph_pre)
         out = torch.mm(mat, out)
         out = self.classifier(out)
 
-        return out
-
+        return out, graph_pre, graph_gt
 
 class VGG_GCN_cifar10(nn.Module):
 
@@ -95,9 +135,9 @@ def VGG16_GCN(threshold):
     origin_model = models.vgg16_bn(pretrained=False)
     return VGG_GCN_cifar10(origin_model, threshold, labels=10)
 
-def VGG16_GCN_GT():
+def VGG16_GCN_graph():
     origin_model = models.vgg16_bn(pretrained=False)
-    return VGG_GCN_GT(origin_model, labels=10)
+    return VGG_GCN_graph(origin_model, threshold=0.5, labels=10)
 
 if __name__ == '__main__':
     origin_model = models.vgg16_bn(pretrained=False)

@@ -17,10 +17,10 @@ import net
 parser = argparse.ArgumentParser(description='PyTorch Cifar10 Training')
 parser.add_argument('--data', type=str, default='/data4/zzy/data/', help='location of the data corpus')
 parser.add_argument('--batch_size', type=int, default=256, help='batch size')
-parser.add_argument('--lr', default=0.005, type=float, help='initial learning rate')
+parser.add_argument('--lr', default=0.001, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=3e-4, type=float, help='weight decay')
-parser.add_argument('--epochs', default=100, type=int, help='number of total epochs to run')
+parser.add_argument('--epochs', default=300, type=int, help='number of total epochs to run')
 parser.add_argument('--print_freq', default=50, type=int, help='print frequency')
 
 
@@ -41,7 +41,8 @@ def main():
         sys.exit(1)
     torch.cuda.set_device(int(args.gpu))
 
-    model = net.VGG16_GCN(args.threshold)
+    # model = net.VGG16_GCN(args.threshold)
+    model = net.VGG16()
     
     model.cuda()
 
@@ -120,10 +121,10 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
     distance = []
 
-    if epoch > 15:
-        model.threshold = args.threshold
-    else:
-        model.threshold = 0.1
+    # if epoch > 15:
+    #     model.threshold = args.threshold
+    # else:
+    #     model.threshold = 0.1
 
 
     for i, (input, target) in enumerate(train_loader):
@@ -132,7 +133,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         target = target.cuda()
 
         optimizer.zero_grad()
-        output = model(input)
+        output,_ = model(input)
 
         loss = criterion(output, target)
         loss.backward()
@@ -167,7 +168,7 @@ def validate(val_loader, model, criterion):
 
         # compute output
         with torch.no_grad():
-            output = model(input)
+            output,_ = model(input)
             loss = criterion(output, target)
 
         output = output.float()

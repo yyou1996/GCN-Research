@@ -1,6 +1,7 @@
 import argparse
 import os
 import torch
+import random
 import numpy as np 
 import torch.optim
 import torch.nn as nn
@@ -42,7 +43,7 @@ def main():
 
     setup_seed(20)
 
-    model = net.VGG16_GCN_GT()
+    model = net.VGG16_GCN_graph()
     
     model.cuda()
 
@@ -72,7 +73,9 @@ def main():
 
 
     criterion = nn.CrossEntropyLoss()
+    criterion_graph = nn.BCELoss()
     criterion = criterion.cuda()
+    criterion_graph = criterion_graph.cuda()
 
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
@@ -86,7 +89,7 @@ def main():
     for epoch in range(args.epochs):
         print("The learning rate is {}".format(optimizer.param_groups[0]['lr']))
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch)
+        train(train_loader, model, criterion, criterion_graph, optimizer, epoch)
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion)
 
@@ -112,7 +115,7 @@ def main():
         # }, filename=os.path.join(args.save_dir, 'checkpoint.pt'))
 
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion, criterion_graph, optimizer, epoch):
     
     losses = AverageMeter()
     top1 = AverageMeter()
@@ -127,9 +130,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
         target = target.cuda()
 
         optimizer.zero_grad()
-        output = model([input,target])
+        output, graph_pre, graph_gt = model([input,target])
 
-        loss = criterion(output, target)
+        loss = criterion(output, target) + criterion_graph(graph_pre, graph_gt)
         loss.backward()
         optimizer.step()
 
@@ -162,7 +165,7 @@ def validate(val_loader, model, criterion):
 
         # compute output
         with torch.no_grad():
-            output = model([input,target])
+            output,_,_ = model([input,target])
             loss = criterion(output, target)
 
         output = output.float()
