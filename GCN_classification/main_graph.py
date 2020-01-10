@@ -46,20 +46,20 @@ def main():
 
     model = net.VGG16_GCN_graph()
 
-    model_path = torch.load('/data4/zzy/model/baseline_vgg16bn/best_model.pt', map_location=torch.device('cuda:'+str(args.gpu)))['state_dict']
-    model_dict = model.state_dict()
-    model_dict.update(model_path)
-    model.load_state_dict(model_dict)
-    print('model_loaded')
+    # model_path = torch.load('/data4/zzy/model/baseline_vgg16bn/best_model.pt', map_location=torch.device('cuda:'+str(args.gpu)))['state_dict']
+    # model_dict = model.state_dict()
+    # model_dict.update(model_path)
+    # model.load_state_dict(model_dict)
+    # print('model_loaded')
 
 
-    for parm in model.features.parameters():
-        parm.requires_grad = False
+    # for parm in model.features.parameters():
+    #     parm.requires_grad = False
 
-    for parm in model.classifier.parameters():
-        parm.requires_grad = False 
+    # for parm in model.classifier.parameters():
+    #     parm.requires_grad = False 
     
-    print('layer fixed')
+    # print('layer fixed')
 
     model.cuda()
 
@@ -103,10 +103,10 @@ def main():
     decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=decreasing_lr, gamma=0.1)
 
-    # if not os.path.exists(args.save_dir):
-    #     os.mkdir(args.save_dir)
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
 
-    prec1 = validate(val_loader, model, criterion)
+    # prec1 = validate(val_loader, model, criterion)
     
     for epoch in range(args.epochs):
         print("The learning rate is {}".format(optimizer.param_groups[0]['lr']))
@@ -144,7 +144,7 @@ def train(train_loader, model, criterion, criterion_graph, optimizer, epoch):
 
     # switch to train mode
     model.train()
-    distance = []
+    # distance = []
 
     # if epoch%20 > 10:
 
@@ -169,19 +169,19 @@ def train(train_loader, model, criterion, criterion_graph, optimizer, epoch):
 
         optimizer.zero_grad()
         output, graph_pre, graph_gt = model([input,target])
-        acc = new_acc(graph_pre, graph_gt)
+        # acc = new_acc(graph_pre, graph_gt)
 # 
         # print(acc)
         # pdb.set_trace()
 
         # if flag==0:
-        loss = criterion_graph(graph_pre, graph_gt)
+        # loss = criterion_graph(graph_pre, graph_gt)
 
         # else:
         #     loss = criterion(output, target)
             
 
-        # loss = criterion(output, target)+criterion_graph(graph_pre, graph_gt)
+        loss = criterion(output, target)+criterion_graph(graph_pre, graph_gt)
             
         loss.backward()
         optimizer.step()
