@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 
+import pdb
+
 
 class VGG_GCN_graph(nn.Module):
 
@@ -27,35 +29,62 @@ class VGG_GCN_graph(nn.Module):
         target_matrix = target.repeat(batch_size,1)
         adj = (target_matrix == torch.transpose(target_matrix,0,1))
         adj = adj.float()
+
         
-        return adj  
+        return adj.detach()
 
     def graph(self, feature):
 
+        # feature_trans = torch.transpose(feature, 0, 1)
+
         feature_trans = torch.transpose(feature, 0, 1)
-        inner_product = torch.mm(feature, feature_trans)
-        distance = torch.sigmoid(inner_product)
+        norm = torch.norm(feature, p=2, dim=1).pow(2)
+        feature_norm = norm.repeat(feature.size(0),1)
+        distance = feature_norm + torch.transpose(feature_norm, 0, 1) - 2*torch.mm(feature, feature_trans)
+
+        # inner_product = torch.mm(feature, feature_trans)
+        # print(inner_product)
+        # pdb.set_trace()
+        
+        distance = torch.sigmoid(distance)
+        distance = 2*(1-distance)
+        distance = torch.clamp(distance,0,1)
+
+        # zerotensor = torch.zeros_like(distance)
+        # onetensor = torch.ones_like(distance)
+        # top10_adj = torch.where(distance > 0.5, onetensor, zerotensor)
+
 
         return distance
+
+    def adj(self, adj_matrix):
+        batch_size = adj_matrix.size(0)
+        A_hat = adj_matrix + torch.eye(batch_size).cuda()
+        D_hat_inverse = torch.diag(1/torch.sum(A_hat,dim=1))
+        matrix = torch.mm(A_hat, D_hat_inverse)
+        return matrix.detach()
 
     def gcn(self, distance):
 
         batch_size = distance.size(0)
         zerotensor = torch.zeros_like(distance)
-        onetensor = torch.zeros_like(distance)
-        adj = torch.where(distance > self.threshold, distance, zerotensor) 
-        mask = torch.where(distance > self.threshold, onetensor, zerotensor)  
+        onetensor = torch.ones_like(distance)
 
-        top10_adj = torch.zeros_like(adj)
-        idx = torch.topk(adj, 10)[1]
-        for ii in range(batch_size):
-            top10_adj[ii,idx[ii]] = 1
+        # mask = torch.where(distance > self.threshold, onetensor, zerotensor)  
+
+        # # top10_adj = torch.zeros_like(distance)
+        # # idx = torch.topk(distance, 10)[1]
+        # # for ii in range(batch_size):
+        # #     top10_adj[ii,idx[ii]] = 1
         
-        top10_adj = top10_adj*mask
+        # # top10_adj = top10_adj*mask
+
+        top10_adj = torch.where(distance > 0.5, onetensor, zerotensor)
 
         A_hat = top10_adj + torch.eye(batch_size).cuda()
         D_hat_inverse = torch.diag(1/torch.sum(A_hat,dim=1))
         matrix = torch.mm(A_hat, D_hat_inverse)
+
         return matrix.detach()
 
     def forward(self, input_list):
@@ -67,13 +96,16 @@ class VGG_GCN_graph(nn.Module):
 
         # graph
         low_feature = self.linear(out)
+
+        
         graph_pre = self.graph(low_feature)
         graph_gt = self.adj_matrix(target)
 
-        mat = self.gcn(graph_pre)
+        # mat = self.gcn(graph_pre)
+        mat = self.adj(graph_pre)
         out = torch.mm(mat, out)
         out = self.classifier(out)
-
+        
         return out, graph_pre, graph_gt
 
 class VGG_GCN_cifar10(nn.Module):

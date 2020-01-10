@@ -16,18 +16,18 @@ import net
 
 parser = argparse.ArgumentParser(description='PyTorch Cifar10 Training')
 parser.add_argument('--data', type=str, default='/data4/zzy/data/', help='location of the data corpus')
-parser.add_argument('--batch_size', type=int, default=256, help='batch size')
-parser.add_argument('--lr', default=0.001, type=float, help='initial learning rate')
+parser.add_argument('--batch_size', type=int, default=128, help='batch size')
+parser.add_argument('--lr', default=0.01, type=float, help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
-parser.add_argument('--weight_decay', default=3e-4, type=float, help='weight decay')
-parser.add_argument('--epochs', default=300, type=int, help='number of total epochs to run')
+parser.add_argument('--weight_decay', default=5e-4, type=float, help='weight decay')
+parser.add_argument('--epochs', default=200, type=int, help='number of total epochs to run')
 parser.add_argument('--print_freq', default=50, type=int, help='print frequency')
 
 
-parser.add_argument('--save_dir', help='The directory used to save the trained models', default='/data4/zzy/model/vgg_thres=300', type=str)
+parser.add_argument('--save_dir', help='The directory used to save the trained models', default='/data4/zzy/model/baseline_vgg16bn', type=str)
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--threshold', type=float, default=300, help='gpu device id')
-
+parser.add_argument('--decreasing_lr', default='100,150', help='decreasing strategy')
 
 best_prec1 = 0
 
@@ -78,10 +78,12 @@ def main():
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
+    decreasing_lr = list(map(int, args.decreasing_lr.split(',')))
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=decreasing_lr, gamma=0.1)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
 
-    # if not os.path.exists(args.save_dir):
-    #     os.mkdir(args.save_dir)
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
     
     for epoch in range(args.epochs):
         print("The learning rate is {}".format(optimizer.param_groups[0]['lr']))
@@ -92,24 +94,24 @@ def main():
 
         scheduler.step()
 
-        # # remember best prec@1 and save checkpoint
-        # is_best = prec1 > best_prec1
-        # best_prec1 = max(prec1, best_prec1)
+        # remember best prec@1 and save checkpoint
+        is_best = prec1 > best_prec1
+        best_prec1 = max(prec1, best_prec1)
 
-        # if is_best:
-        #     save_checkpoint({
-        #         'epoch': epoch + 1,
-        #         'state_dict': model.state_dict(),
-        #         'best_prec1': best_prec1,
-        #         'optimizer': optimizer,
-        #     }, filename=os.path.join(args.save_dir, 'best_model.pt'))
+        if is_best:
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'best_prec1': best_prec1,
+                'optimizer': optimizer,
+            }, filename=os.path.join(args.save_dir, 'best_model.pt'))
 
-        # save_checkpoint({
-        #     'epoch': epoch + 1,
-        #     'state_dict': model.state_dict(),
-        #     'best_prec1': best_prec1,
-        #     'optimizer': optimizer,
-        # }, filename=os.path.join(args.save_dir, 'checkpoint.pt'))
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'state_dict': model.state_dict(),
+            'best_prec1': best_prec1,
+            'optimizer': optimizer,
+        }, filename=os.path.join(args.save_dir, 'checkpoint.pt'))
 
 
 def train(train_loader, model, criterion, optimizer, epoch):
